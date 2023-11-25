@@ -1,0 +1,10 @@
+# devops
+black
+click
+pylint
+pytest
+pytest-cov
+
+# web app
+python-dotenv
+requestsclear
