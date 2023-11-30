@@ -8,3 +8,6 @@ pytest-cov
 # web app
 python-dotenv
 requestsclear
+streamlit
+spotipy
+pydub

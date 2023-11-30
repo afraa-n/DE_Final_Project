@@ -1,47 +1,74 @@
-from flask import Flask, render_template
-from trial import get_token, search_for_track, parse_song
+# app.py
 
-app = Flask(__name__)
+import streamlit as st
+import os
+import io  # Import io for BytesIO
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+from pydub import AudioSegment  # Import AudioSegment from pydub
+from song import get_token, search_for_track, parse_song, get_audio_content
 
-# Load environment variables from .env file
-app.config.from_dotenv()
+# Load Spotify API credentials from environment variables
+SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
+SPOTIPY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 
-# Define the Spotify client ID and client secret
-client_id = app.config["CLIENT_ID"]
-client_secret = app.config["CLIENT_SECRET"]
+# Authenticate with Spotify API
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=SPOTIPY_CLIENT_ID,
+    client_secret=SPOTIPY_CLIENT_SECRET,
+    redirect_uri=SPOTIPY_REDIRECT_URI,
+    scope="user-library-read"
+))
 
-# Get the Spotify access token
-token = get_token(client_id, client_secret)
+# Streamlit App
+st.title("Spotify Song Player")
 
+# Get Spotify access token
+token = get_token()
 
-@app.route("/")
-def index():
-    # Example response from chatGPT
-    chatgpt_response = """
-    "Riptide" by Vance Joy - A breezy and catchy acoustic song.
-    "Take Me Home, Country Roads" by John Denver - A classic that's great for a laid-back mood.
-    "Walking on Sunshine" by Katrina and the Waves - An upbeat, feel-good song.
-    "I'm Yours" by Jason Mraz - A mellow and cheerful acoustic track.
-    "Up&Up" by Coldplay - An uplifting and anthemic song.
-    "Island in the Sun" by Weezer - A chill and sunny track.
-    "One Love" by Bob Marley - Reggae vibes for a relaxed atmosphere.
-    " Budapest" by George Ezra - A catchy and soulful tune.
-    "Drops of Jupiter" by Train - A reflective and melodic song.
-    "Fly Me to the Moon" by Frank Sinatra - A classic that might set a cool and sophisticated mood.
-    """
+# Input text area for the user to input songs
+user_input = st.text_area("Enter songs (one per line):", "")
 
-    # Parse the chatGPT response to get a random song
-    song, artist = parse_song(chatgpt_response)
+# Process user input and get a random song
+if st.button("Get Random Song"):
+    song_artist = parse_song(user_input)
+    if song_artist[0] and song_artist[1]:
+        artist_name, song_name = song_artist
+        st.write(f"Searching for: {song_name} by {artist_name}")
+        spotify_url = search_for_track(token, artist_name, song_name)
+        st.write(f"Spotify URL: {spotify_url}")  # Add this line
+        if spotify_url:
+            st.success("Song Found! Play it below:")
+            track_id = sp.search(q=f"{song_name} {artist_name}", type='track')['tracks']['items'][0]['id']
+            track_info = sp.track(track_id)
+            preview_url = track_info['preview_url']
+            
+            # Get audio content
+            audio_content = get_audio_content(preview_url)
+            st.write(f"Audio Content: {audio_content}")  # Add this line
+            
+            if audio_content:
+                # Convert to OGG format using pydub
+                audio = AudioSegment.from_file(io.BytesIO(audio_content))
+                audio_content_ogg = audio.export(format='ogg').read()
+                
+                # Play the audio in the Streamlit app
+                st.audio(audio_content_ogg, format='audio/ogg', start_time=0)
+            else:
+                st.warning("No preview available for this song.")
+        else:
+            st.warning("Song not found on Spotify.")
 
-    # If a song is found, search for it on Spotify and get the track URL
-    if song and artist:
-        track_url = search_for_track(token, artist, song)
-        return render_template(
-            "index.html", track_url=track_url, song=song, artist=artist
-        )
-    else:
-        return "No song found."
+# Add some example songs
+st.subheader("Example Songs:")
+example_list = """
+"Shape of You" - Ed Sheeran
+"Blinding Lights" - The Weeknd
+"Dance Monkey" - Tones and I
+"Watermelon Sugar" - Harry Styles
+"Savage Love" - Jawsh 685, Jason Derulo
+"""
+st.text(example_list)
 
-
-if __name__ == "__main__":
-    app.run(debug=True)
+st.write("Copy and paste examples above into the input box and click 'Get Random Song' to play.")
